@@ -1,0 +1,100 @@
+stages:
+    - make
+    - cpplint
+    - cpplint:failure
+    - unit-test
+    - deploy
+
+
+
+
+make-job:
+    stage: make
+    script:
+        - mkdir -p $CI_PROJECT_DIR/src/release || exit_codes=1
+        - cd $CI_PROJECT_DIR/src/cat/ && make || exit_codes=1
+        - cp s21_cat $CI_PROJECT_DIR/src/release || exit_codes=1
+        - cd $CI_PROJECT_DIR/src/grep/ && make || exit_codes=1
+        - cp s21_grep $CI_PROJECT_DIR/src/release || exit_codes=1
+
+        - if [[ $exit_codes -eq 1 ]]; then
+          curl -s -X POST https://api.telegram.org/bot5470289347:AAPNwOeSNluxwJlThaEuTEZi4/sendMessage -d chat_id=1083294583 -d text="CI fail on stage - make-job"; exit 1; else 
+          curl -s -X POST https://api.telegram.org/bot5470289347:AAPNwOeSNluxwJlThaEuTEZi4/sendMessage -d chat_id=1083294583 -d text="CI stage - make-job - SUCCESS";
+          fi;
+    tags:
+        - test 
+
+    artifacts: 
+         paths: 
+           - $CI_PROJECT_DIR/src/release/*
+         expire_in: 30 days
+
+
+
+
+
+cpplint-job:
+    stage: cpplint
+    script:
+        - python3 $CI_PROJECT_DIR/src/linters/cpplint.py --extensions=c $CI_PROJECT_DIR/src/cat/*.c $CI_PROJECT_DIR/src/cat/*.h $CI_PROJECT_DIR/src/grep/*.c $CI_PROJECT_DIR/src/grep/*.h
+    tags:
+         - test
+
+
+
+
+cpplint:failure:
+    stage: cpplint:failure
+    script:
+        - curl -s -X POST https://api.telegram.org/bot5470289347:AAPNwOeSNluxwJlThaEuTEZi4/sendMessage -d chat_id=1083294583 -d text="CI stage fail"
+    when: on_failure
+    tags:
+        - test
+
+
+
+
+
+
+
+
+
+unit-test-job:
+    stage: unit-test
+    script:
+        - cp -R $CI_PROJECT_DIR/src/grep/* $CI_PROJECT_DIR/src/release/ && cd $CI_PROJECT_DIR/src/release/ && bash tests.sh || exit_codes=1
+        - cp -R $CI_PROJECT_DIR/src/cat/* $CI_PROJECT_DIR/src/release/ && cd $CI_PROJECT_DIR/src/release/ && bash test_cat.sh || exit_codes=1
+
+
+        - if [[ $exit_codes -eq 1 ]]; then
+          curl -s -X POST https://api.telegram.org/bot5470289347:AAPNwOeSNluxwJlThaEuTEZi4/sendMessage -d chat_id=1083294583 -d text="CI fail on stage - unit-test"; exit 1; else 
+          curl -s -X POST https://api.telegram.org/bot5470289347:AAPNwOeSNluxwJlThaEuTEZi4/sendMessage -d chat_id=1083294583 -d text="CI stage - SUCCESS! (run deploy stage manual)";
+          fi;
+
+
+    tags:
+        - test
+
+
+
+
+
+
+
+
+deploy-job:
+    stage: deploy
+    needs: 
+        - unit-test-job
+        - make-job 
+    when: manual
+    script:
+        - cd $CI_PROJECT_DIR/src || exit_codes=1
+        - bash to_serv.sh || exit_codes=1
+
+        - if [[ $exit_codes -eq 1 ]]; then
+          curl -s -X POST https://api.telegram.org/bot5470289347:AANwOeSNluxwJlThaEuTEZi4/sendMessage -d chat_id=1083294583 -d text="CD fail on stage - deploy-job"; exit 1; else 
+          curl -s -X POST https://api.telegram.org/bot5470289347:AANwOeSNluxwJlThaEuTEZi4/sendMessage -d chat_id=1083294583 -d text="CI \ CD - SUCCESS";
+          fi;
+    tags:
+        - test
